@@ -619,3 +619,130 @@ class TestEndToEndT3Park:
         assert result.parked is None
         assert isinstance(result.draft, str)
         assert len(result.draft) > 0
+
+
+# ---------------------------------------------------------------------------
+# Cycle 9: on_park callback — fires once on T3 park, never on duplicates or T0/T1
+# ---------------------------------------------------------------------------
+
+class TestOnParkCallback:
+    def _t3_executor(self, on_park=None):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        spec = _make_spec("test.cb_t3", tier=AutonomyTier.T3, mode=ToolMode.write)
+        fn = lambda inputs, dry_run=False: "preview"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        return ToolExecutor(registry, on_park=on_park)
+
+    def test_callback_fires_when_t3_parks(self):
+        fired = []
+        executor = self._t3_executor(on_park=lambda req: fired.append(req))
+
+        executor.execute(
+            "test.cb_t3",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="test",
+            idempotency_key="cb-key-001",
+        )
+
+        assert len(fired) == 1
+        assert isinstance(fired[0], ParkedApprovalRequest)
+
+    def test_callback_receives_correct_parked_request(self):
+        received = []
+        executor = self._t3_executor(on_park=lambda req: received.append(req))
+
+        executor.execute(
+            "test.cb_t3",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="commitment detected",
+            idempotency_key="cb-key-002",
+        )
+
+        req = received[0]
+        assert req.action == "test.cb_t3"
+        assert req.idempotency_key == "cb-key-002"
+        assert req.rationale == "commitment detected"
+        assert req.principal == "client-northpath-001"
+
+    def test_callback_not_fired_on_idempotent_duplicate(self):
+        fired = []
+        executor = self._t3_executor(on_park=lambda req: fired.append(req))
+
+        executor.execute(
+            "test.cb_t3",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="first",
+            idempotency_key="cb-dupe-key",
+        )
+        executor.execute(
+            "test.cb_t3",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="second",
+            idempotency_key="cb-dupe-key",
+        )
+
+        assert len(fired) == 1
+
+    def test_callback_not_fired_for_t0_tool(self):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        fired = []
+        spec = _make_spec("test.cb_t0", tier=AutonomyTier.T0, mode=ToolMode.read)
+        fn = lambda inputs, dry_run=False: "read-result"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        executor = ToolExecutor(registry, on_park=lambda req: fired.append(req))
+
+        executor.execute(
+            "test.cb_t0",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="read",
+            idempotency_key="cb-t0-key",
+        )
+
+        assert fired == []
+
+    def test_callback_not_fired_for_t1_tool(self):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        fired = []
+        spec = _make_spec("test.cb_t1", tier=AutonomyTier.T1, mode=ToolMode.write)
+        fn = lambda inputs, dry_run=False: "written"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        executor = ToolExecutor(registry, on_park=lambda req: fired.append(req))
+
+        executor.execute(
+            "test.cb_t1",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="safe write",
+            idempotency_key="cb-t1-key",
+        )
+
+        assert fired == []

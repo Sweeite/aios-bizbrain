@@ -19,6 +19,8 @@ class Orchestrator:
         anthropic_client,
         span_emitter: SpanEmitter | None = None,
         reflection_task=None,
+        tool_executor=None,
+        idempotency_key: str | None = None,
     ) -> None:
         self._registry = registry
         self._memory = memory_writer
@@ -26,6 +28,8 @@ class Orchestrator:
         self._client = anthropic_client
         self._emitter = span_emitter or SpanEmitter()
         self._reflection_task = reflection_task
+        self._tool_executor = tool_executor
+        self._idempotency_key = idempotency_key
 
     def handle(
         self,
@@ -57,6 +61,8 @@ class Orchestrator:
             scope=agent_scope,
             run_id=run_id,
             anthropic_client=self._client,
+            tool_executor=self._tool_executor,
+            idempotency_key=self._idempotency_key,
         )
 
         self._emitter.emit(result.span)

@@ -466,3 +466,138 @@ grep -r "northpath\|Northpath\|hubspot_mock\|consulting" backend/engine/ \
 ```
 
 Expected: `PASS: engine is clean`
+
+---
+
+## Slice 5: Commitment gate + T3 tool — draft email parks as ParkedApprovalRequest
+
+### 21. Automated tests (tools + commitment gate)
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/test_tools.py -v
+```
+
+Expected: 33 tests pass.
+
+---
+
+### 22. Trigger the proving path — confirm parked request row in Supabase
+
+Requires `ANTHROPIC_API_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` in `backend/.env`.
+
+```bash
+cd backend
+.venv/bin/python - <<'EOF'
+import os, sys
+sys.path.insert(0, '..')
+from dotenv import load_dotenv
+load_dotenv()
+
+import anthropic
+from supabase import create_client
+from engine.agent.registry import AgentRegistry
+from engine.agent.live import LiveQuery
+from engine.agent.span_emitter import SpanEmitter
+from engine.agent.orchestrator import Orchestrator
+from engine.ingestion.entity_resolver import EntityResolver
+from engine.ingestion.memory_writer import MemoryWriter
+from engine.spine.types import ParkedApprovalRequest
+from engine.tools.registry import ToolRegistry
+from engine.tools.executor import ToolExecutor
+from engine.tools.implementations.draft_email import DraftEmailTool, SPEC as EMAIL_SPEC
+from packs.consulting.agent_specs.roster import CONSULTING_AGENTS
+from packs.consulting.connectors.hubspot_mock import HubSpotMockConnector
+
+db = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
+
+def park_to_supabase(req: ParkedApprovalRequest) -> None:
+    db.table("approval_queue").upsert({
+        "idempotency_key":   req.idempotency_key,
+        "action":            req.action,
+        "preview":           req.preview,
+        "requesting_agent":  req.requesting_agent,
+        "principal":         req.principal,
+        "scope_level":       req.scope.level.value,
+        "scope_entity_ref":  req.scope.entity_ref,
+        "rationale":         req.rationale,
+        "status":            "pending",
+    }, on_conflict="idempotency_key").execute()
+    print(f"Parked: action={req.action!r}  key={req.idempotency_key!r}")
+
+# Build tool executor with Supabase on_park callback
+tool_registry = ToolRegistry()
+tool_registry.register(EMAIL_SPEC, DraftEmailTool().execute)
+executor = ToolExecutor(tool_registry, on_park=park_to_supabase)
+
+# Build memory from fixture event
+events = HubSpotMockConnector().pull()
+resolver = EntityResolver(known_entities={"client-northpath-001": "client"})
+writer = MemoryWriter()
+for event in events:
+    writer.write(resolver.resolve(event))
+
+# Wire agent registry
+agent_registry = AgentRegistry()
+for spec in CONSULTING_AGENTS:
+    agent_registry.register(spec)
+
+# Run orchestrator (passes executor so agent can call tools)
+emitter = SpanEmitter()
+client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+orch = Orchestrator(
+    registry=agent_registry,
+    memory_writer=writer,
+    live=LiveQuery(),
+    anthropic_client=client,
+    span_emitter=emitter,
+    tool_executor=executor,
+    idempotency_key="slice5-proving-path-001",
+)
+result = orch.handle("deal.stage_changed", "client-northpath-001")
+
+print()
+print("=== Draft nudge ===")
+print(result.draft)
+print()
+if result.parked:
+    print(f"=== Parked as T3 ===  key={result.parked.idempotency_key!r}")
+else:
+    print("(No commitment detected — sent as autonomous T1)")
+print("PASS — check Supabase Table Editor → approval_queue")
+EOF
+```
+
+Expected:
+- Script prints `Parked: action='gmail.draft_email'  key='slice5-proving-path-001'`
+- Draft nudge printed to stdout
+- `Parked as T3` line printed
+
+In the Supabase dashboard → Table Editor → `approval_queue`, confirm a row with:
+- `action = gmail.draft_email`
+- `status = pending`
+- `requesting_agent = account-agent`
+- `preview` = the exact draft email body
+- `idempotency_key = slice5-proving-path-001`
+
+Running the script a second time must produce the same row (idempotent — `UNIQUE(idempotency_key)` prevents duplicates, `on_park` callback does not fire again).
+
+---
+
+### 23. Idempotency check — same key parks once
+
+Re-run the script from step 22 without changing `idempotency_key`. Confirm:
+- `approval_queue` still has exactly one row for `idempotency_key = slice5-proving-path-001`
+- Row is not duplicated or overwritten with a different preview
+
+---
+
+### 24. Three-layer separation check
+
+```bash
+grep -r "northpath\|Northpath\|hubspot_mock\|consulting" backend/engine/ \
+  && echo "FAIL: engine contains pack/client refs" \
+  || echo "PASS: engine is clean"
+```
+
+Expected: `PASS: engine is clean`

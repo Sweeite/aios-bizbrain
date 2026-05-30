@@ -605,3 +605,67 @@ class TestEndToEnd:
             Scope(level=ScopeLevel.entity, entity_ref="client-northpath-001"),
         )
         assert routed.name == "account-agent"
+
+
+# ---------------------------------------------------------------------------
+# Cycle 9: Orchestrator forwards tool_executor → result.parked is set
+# ---------------------------------------------------------------------------
+
+class TestOrchestratorWithToolExecutor:
+    def _build_executor(self):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+        from engine.tools.implementations.draft_email import DraftEmailTool, SPEC
+
+        registry = ToolRegistry()
+        registry.register(SPEC, DraftEmailTool().execute)
+        return ToolExecutor(registry)
+
+    def test_orchestrator_sets_parked_on_result_when_executor_given(self):
+        from engine.agent.registry import AgentRegistry
+        from engine.agent.live import LiveQuery
+        from engine.agent.span_emitter import SpanEmitter
+        from engine.ingestion.memory_writer import MemoryWriter
+        from engine.agent.orchestrator import Orchestrator
+        from engine.spine.types import ParkedApprovalRequest
+
+        registry = AgentRegistry()
+        registry.register(_account_spec())
+
+        orch = Orchestrator(
+            registry=registry,
+            memory_writer=MemoryWriter(),
+            live=LiveQuery(),
+            anthropic_client=_mock_anthropic(draft_text="Confirming scope at 200 hours commencing June 1."),
+            span_emitter=SpanEmitter(),
+            tool_executor=self._build_executor(),
+            idempotency_key="orch-park-test-001",
+        )
+
+        result = orch.handle("deal.stage_changed", "client-northpath-001")
+
+        assert result.parked is not None
+        assert isinstance(result.parked, ParkedApprovalRequest)
+        assert result.parked.action == "gmail.draft_email"
+        assert result.parked.idempotency_key == "orch-park-test-001"
+
+    def test_orchestrator_without_executor_leaves_parked_none(self):
+        from engine.agent.registry import AgentRegistry
+        from engine.agent.live import LiveQuery
+        from engine.agent.span_emitter import SpanEmitter
+        from engine.ingestion.memory_writer import MemoryWriter
+        from engine.agent.orchestrator import Orchestrator
+
+        registry = AgentRegistry()
+        registry.register(_account_spec())
+
+        orch = Orchestrator(
+            registry=registry,
+            memory_writer=MemoryWriter(),
+            live=LiveQuery(),
+            anthropic_client=_mock_anthropic(),
+            span_emitter=SpanEmitter(),
+        )
+
+        result = orch.handle("deal.stage_changed", "client-northpath-001")
+        assert result.parked is None

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from engine.spine.types import AutonomyTier, ParkedApprovalRequest, Scope, ScopeLevel
 from engine.tools.registry import ToolRegistry
 
@@ -16,9 +18,14 @@ class InsufficientScope(Exception):
 
 
 class ToolExecutor:
-    def __init__(self, registry: ToolRegistry) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        on_park: Callable[[ParkedApprovalRequest], None] | None = None,
+    ) -> None:
         self._registry = registry
         self._parked: dict[str, ParkedApprovalRequest] = {}
+        self._on_park = on_park
 
     def execute(
         self,
@@ -56,4 +63,6 @@ class ToolExecutor:
             idempotency_key=idempotency_key,
         )
         self._parked[idempotency_key] = request
+        if self._on_park is not None:
+            self._on_park(request)
         return request
