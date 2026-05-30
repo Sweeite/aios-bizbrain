@@ -1,8 +1,8 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from engine.spine.types import Scope, Span, SpanOp
+from engine.spine.types import ParkedApprovalRequest, Scope, Span, SpanOp
 
 REASONING_MODEL = "claude-sonnet-4-6"
 
@@ -12,6 +12,7 @@ class AgentStepResult:
     agent_name: str
     draft: str
     span: Span
+    parked: ParkedApprovalRequest | None = field(default=None)
 
 
 class AccountAgent:
@@ -25,6 +26,8 @@ class AccountAgent:
         scope: Scope,
         run_id: str,
         anthropic_client,
+        tool_executor=None,
+        idempotency_key: str | None = None,
     ) -> AgentStepResult:
         memory_summary = "\n".join(
             f"- {r.payload.get('event_type', 'event')}: "
@@ -54,23 +57,41 @@ class AccountAgent:
         )
         ended_at = datetime.now(timezone.utc)
 
-        return AgentStepResult(
-            agent_name=self.name,
-            draft=response.content[0].text,
-            span=Span(
-                span_id=str(uuid.uuid4()),
-                run_id=run_id,
-                actor=self.name,
-                op=SpanOp.reason,
-                input_ref=f"recall:{entity_ref}+live:{entity_ref}",
-                output_ref=f"draft:{entity_ref}",
-                started_at=started_at,
-                ended_at=ended_at,
-                model_tier=REASONING_MODEL,
-                token_in=response.usage.input_tokens,
-                token_out=response.usage.output_tokens,
-                scope=scope,
-                status="ok",
-                outcome="draft_nudge",
-            ),
+        draft_text = response.content[0].text
+        span = Span(
+            span_id=str(uuid.uuid4()),
+            run_id=run_id,
+            actor=self.name,
+            op=SpanOp.reason,
+            input_ref=f"recall:{entity_ref}+live:{entity_ref}",
+            output_ref=f"draft:{entity_ref}",
+            started_at=started_at,
+            ended_at=ended_at,
+            model_tier=REASONING_MODEL,
+            token_in=response.usage.input_tokens,
+            token_out=response.usage.output_tokens,
+            scope=scope,
+            status="ok",
+            outcome="draft_nudge",
         )
+
+        parked: ParkedApprovalRequest | None = None
+        if tool_executor is not None:
+            idem_key = idempotency_key or str(uuid.uuid4())
+            result = tool_executor.execute(
+                "gmail.draft_email",
+                inputs={
+                    "to": entity_ref,
+                    "subject": f"Following up — {live_context.get('deal_name', entity_ref)}",
+                    "body": draft_text,
+                },
+                scope=scope,
+                requesting_agent=self.name,
+                principal=entity_ref,
+                rationale="nudge stalled deal",
+                idempotency_key=idem_key,
+            )
+            if isinstance(result, ParkedApprovalRequest):
+                parked = result
+
+        return AgentStepResult(agent_name=self.name, draft=draft_text, span=span, parked=parked)
