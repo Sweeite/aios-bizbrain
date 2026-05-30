@@ -3,12 +3,14 @@
 -- All tables use UUIDs. pgvector extension required for vector stores.
 
 -- ── Extensions ───────────────────────────────────────────────────────────────
+-- uuid-ossp kept for compatibility; gen_random_uuid() is used throughout (built-in)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "vector";
+-- pgvector: enable in Supabase dashboard (Database → Extensions → vector) before pushing
+-- CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- ── Entity memory ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS entity_memory (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entity_ref      TEXT NOT NULL,
     entity_type     TEXT NOT NULL CHECK (entity_type IN ('client','contact','employee','engagement')),
     payload         JSONB NOT NULL DEFAULT '{}',
@@ -28,10 +30,10 @@ CREATE INDEX IF NOT EXISTS entity_memory_scope_idx ON entity_memory (scope_level
 
 -- ── Semantic memory ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS semantic_memory (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     topic           TEXT NOT NULL,
     payload         JSONB NOT NULL DEFAULT '{}',
-    embedding       vector(1536),
+    embedding       TEXT, -- vector(1536) once pgvector extension is enabled
     provenance      TEXT NOT NULL,
     as_of           TIMESTAMPTZ NOT NULL,
     lifespan_days   INTEGER,
@@ -44,12 +46,12 @@ CREATE INDEX IF NOT EXISTS semantic_memory_topic_idx ON semantic_memory (topic);
 
 -- ── Episodic memory ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS episodic_memory (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source_event_id TEXT NOT NULL,
     source_system   TEXT NOT NULL,
     event_type      TEXT NOT NULL,
     payload         JSONB NOT NULL DEFAULT '{}',
-    embedding       vector(1536),
+    embedding       TEXT, -- vector(1536) once pgvector extension is enabled
     provenance      TEXT NOT NULL,
     as_of           TIMESTAMPTZ NOT NULL,
     lifespan_days   INTEGER DEFAULT 365,
@@ -68,7 +70,7 @@ CREATE INDEX IF NOT EXISTS episodic_memory_event_type_idx ON episodic_memory (ev
 
 -- ── Procedural memory ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS procedural_memory (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL UNIQUE,
     description     TEXT,
     steps           JSONB NOT NULL DEFAULT '[]',
@@ -84,7 +86,7 @@ CREATE TABLE IF NOT EXISTS procedural_memory (
 
 -- ── Durable intake queue ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS intake_queue (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     idempotency_key TEXT NOT NULL UNIQUE,
     source_system   TEXT NOT NULL,
     event_type      TEXT NOT NULL,
@@ -99,7 +101,7 @@ CREATE INDEX IF NOT EXISTS intake_queue_status_idx ON intake_queue (status, enqu
 
 -- ── Tool registry ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tool_registry (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL UNIQUE,
     system          TEXT NOT NULL,
     mode            TEXT NOT NULL CHECK (mode IN ('read','write')),
@@ -115,7 +117,7 @@ CREATE TABLE IF NOT EXISTS tool_registry (
 
 -- ── Agent registry ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS agent_registry (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL UNIQUE,
     role            TEXT NOT NULL,
     scope_level     TEXT NOT NULL,
@@ -134,7 +136,7 @@ CREATE TABLE IF NOT EXISTS agent_registry (
 
 -- ── Autonomy config (per-client tier overrides) ──────────────────────────────
 CREATE TABLE IF NOT EXISTS autonomy_config (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tool_name       TEXT NOT NULL UNIQUE REFERENCES tool_registry (name),
     tier_override   TEXT NOT NULL CHECK (tier_override IN ('T0','T1','T2','T3','T4')),
     reason          TEXT,
@@ -145,7 +147,7 @@ CREATE TABLE IF NOT EXISTS autonomy_config (
 
 -- ── Approval queue (durable, never silently expires) ─────────────────────────
 CREATE TABLE IF NOT EXISTS approval_queue (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     idempotency_key     TEXT NOT NULL UNIQUE,
     action              TEXT NOT NULL,
     preview             TEXT NOT NULL,
@@ -166,7 +168,7 @@ CREATE INDEX IF NOT EXISTS approval_queue_principal_idx ON approval_queue (princ
 
 -- ── Audit log (immutable, append-only) ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS audit_log (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     action          TEXT NOT NULL,
     tool_name       TEXT,
     tier            TEXT,
