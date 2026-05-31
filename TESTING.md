@@ -102,17 +102,16 @@ Expected: `PASS: engine is clean`
 
 ---
 
-## 8. prompt-kit (deferred — Slice 8)
+## 8. prompt-kit
 
-prompt-kit is a shadcn registry library for AI chat components. Install it when building the chat interface in Slice 8:
+prompt-kit is a shadcn registry library for AI chat components. The correct registry base URL is `https://www.prompt-kit.com/c/` (not `/r/`).
+
+The `message` component was installed in Slice 6. Install the `prompt-input` component when building the chat interface in Slice 8:
 
 ```bash
 cd cockpit
-npx shadcn@latest add https://prompt-kit.com/r/prompt-input.json
-npx shadcn@latest add https://prompt-kit.com/r/message.json
+npx shadcn@latest add https://www.prompt-kit.com/c/prompt-input.json
 ```
-
-Not required for Slice 1 to pass.
 
 ---
 
@@ -601,3 +600,90 @@ grep -r "northpath\|Northpath\|hubspot_mock\|consulting" backend/engine/ \
 ```
 
 Expected: `PASS: engine is clean`
+
+---
+
+## Slice 6: Approval Queue — end-to-end proving path
+
+### 25. Automated tests (approvals + tools augmentation)
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/test_tools.py tests/test_approvals.py -v
+```
+
+Expected: 47 tool tests + 16 approval tests = 63 tests pass.
+
+---
+
+### 26. Backend endpoints smoke-check
+
+With the FastAPI server running (`cd backend && .venv/bin/uvicorn app.main:app --reload`):
+
+```bash
+# List empty queue
+curl -s http://localhost:8000/approvals | python3 -m json.tool
+# → []
+
+# Approve unknown key → 404
+curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/approvals/no-such-key/approve
+# → 404
+
+# Reject unknown key → 404
+curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/approvals/no-such-key/reject \
+  -H "Content-Type: application/json" -d '{"reason":"test"}'
+# → 404
+```
+
+---
+
+### 27. Full end-to-end proving path
+
+Requires `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` in `backend/.env`.
+FastAPI server must be running on port 8000.
+
+Run the Slice 5 proving script (step 22) — this parks a request in Supabase AND in the
+in-memory executor. Because the executor lives in the FastAPI process, the parked request
+is queryable immediately via the API.
+
+Then verify via the cockpit:
+
+```bash
+cd cockpit && npm run dev
+```
+
+Open http://localhost:3000/cockpit/approvals — expect:
+- The Approval Queue page loads with the parked request visible
+- Card shows: draft email preview, agent rationale, entity ref, scope level
+- Three buttons: Approve, Edit & Approve, Reject
+
+**Approve:**
+1. Click **Approve** on the card
+2. Card disappears from the queue
+3. Confirm via `curl http://localhost:8000/approvals` — queue is empty
+4. Approve same key again (idempotency check):
+   ```bash
+   curl -s -X POST http://localhost:8000/approvals/<key>/approve \
+     -H "Content-Type: application/json" -d '{}'
+   ```
+   → returns `{"status":"approved","result":"..."}` (idempotent — not 404 or 5xx)
+
+**Edit & Approve:**
+1. Re-park a fresh request using the proving script with a new idempotency key
+2. Click **Edit & Approve** — textarea expands showing the draft
+3. Modify the text
+4. Click **Approve with edits**
+5. Card disappears; `result` field in the approve response contains the edited text (not original)
+
+**Reject:**
+1. Re-park a fresh request
+2. Click **Reject** — reason input appears
+3. Type a reason and click **Confirm rejection**
+4. Card disappears from queue
+5. Reject same key again (idempotency check):
+   ```bash
+   curl -s -X POST http://localhost:8000/approvals/<key>/reject \
+     -H "Content-Type: application/json" -d '{"reason":"second attempt"}'
+   ```
+   → returns `{"status":"rejected"}` (idempotent)
+

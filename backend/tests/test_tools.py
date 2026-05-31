@@ -746,3 +746,241 @@ class TestOnParkCallback:
         )
 
         assert fired == []
+
+
+# ---------------------------------------------------------------------------
+# Cycle 10: list_pending() returns all currently parked requests
+# ---------------------------------------------------------------------------
+
+class TestListPending:
+    def _t3_executor(self):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        spec = _make_spec("test.lp_t3", tier=AutonomyTier.T3, mode=ToolMode.write)
+        fn = lambda inputs, dry_run=False: "preview"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        return ToolExecutor(registry)
+
+    def test_list_pending_empty_before_any_park(self):
+        executor = self._t3_executor()
+        assert executor.list_pending() == []
+
+    def test_list_pending_returns_parked_request(self):
+        executor = self._t3_executor()
+
+        executor.execute(
+            "test.lp_t3",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="test",
+            idempotency_key="lp-key-001",
+        )
+
+        pending = executor.list_pending()
+        assert len(pending) == 1
+        assert pending[0].idempotency_key == "lp-key-001"
+
+    def test_list_pending_returns_all_distinct_parked_requests(self):
+        executor = self._t3_executor()
+
+        for key in ("lp-multi-001", "lp-multi-002", "lp-multi-003"):
+            executor.execute(
+                "test.lp_t3",
+                inputs={},
+                scope=_entity_scope(),
+                requesting_agent="account-agent",
+                principal="client-northpath-001",
+                rationale="test",
+                idempotency_key=key,
+            )
+
+        keys = {r.idempotency_key for r in executor.list_pending()}
+        assert keys == {"lp-multi-001", "lp-multi-002", "lp-multi-003"}
+
+
+# ---------------------------------------------------------------------------
+# Cycle 11: approve() calls fn with dry_run=False and removes request from pending
+# ---------------------------------------------------------------------------
+
+class TestApprove:
+    def _t3_executor(self, fn=None):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        spec = _make_spec("test.ap_t3", tier=AutonomyTier.T3, mode=ToolMode.write)
+        if fn is None:
+            fn = lambda inputs, dry_run=False: f"executed:{inputs.get('body','')}"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        return ToolExecutor(registry)
+
+    def _park(self, executor, key="ap-key-001", inputs=None):
+        executor.execute(
+            "test.ap_t3",
+            inputs=inputs or {"body": "original body"},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="test",
+            idempotency_key=key,
+        )
+
+    def test_approve_returns_execution_result(self):
+        executor = self._t3_executor()
+        self._park(executor)
+        result = executor.approve("ap-key-001")
+        assert result == "executed:original body"
+
+    def test_approve_removes_request_from_pending(self):
+        executor = self._t3_executor()
+        self._park(executor)
+        executor.approve("ap-key-001")
+        assert executor.list_pending() == []
+
+    def test_approve_calls_fn_with_dry_run_false(self):
+        calls = []
+
+        def fn(inputs, dry_run=False):
+            calls.append(dry_run)
+            return "result"
+
+        executor = self._t3_executor(fn=fn)
+        self._park(executor)
+        calls.clear()  # discard the dry_run=True preview call made during park
+        executor.approve("ap-key-001")
+
+        assert calls == [False]
+
+    def test_approve_raises_for_unknown_key(self):
+        executor = self._t3_executor()
+        with pytest.raises(KeyError):
+            executor.approve("nonexistent-key")
+
+
+# ---------------------------------------------------------------------------
+# Cycle 12: approve() with override_body uses modified body, not original
+# ---------------------------------------------------------------------------
+
+class TestApproveOverride:
+    def _executor_and_park(self, key="ov-key-001"):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        spec = _make_spec("test.ov_t3", tier=AutonomyTier.T3, mode=ToolMode.write)
+        fn = lambda inputs, dry_run=False: inputs.get("body", "")
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        executor = ToolExecutor(registry)
+        executor.execute(
+            "test.ov_t3",
+            inputs={"body": "original draft"},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="test",
+            idempotency_key=key,
+        )
+        return executor
+
+    def test_override_body_replaces_original_in_execution(self):
+        executor = self._executor_and_park()
+        result = executor.approve("ov-key-001", override_body="edited draft")
+        assert result == "edited draft"
+
+    def test_no_override_uses_original_inputs(self):
+        executor = self._executor_and_park("ov-key-002")
+        result = executor.approve("ov-key-002")
+        assert result == "original draft"
+
+
+# ---------------------------------------------------------------------------
+# Cycle 13: approve() is idempotent — fn called once, second returns same result
+# ---------------------------------------------------------------------------
+
+class TestApproveIdempotency:
+    def _executor_and_park(self):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        calls = []
+        spec = _make_spec("test.idem_ap", tier=AutonomyTier.T3, mode=ToolMode.write)
+
+        def fn(inputs, dry_run=False):
+            calls.append(dry_run)
+            return "executed-result"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        executor = ToolExecutor(registry)
+        executor.execute(
+            "test.idem_ap",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="test",
+            idempotency_key="idem-ap-key",
+        )
+        calls.clear()
+        return executor, calls
+
+    def test_approve_twice_returns_same_result(self):
+        executor, _ = self._executor_and_park()
+        first = executor.approve("idem-ap-key")
+        second = executor.approve("idem-ap-key")
+        assert first == second == "executed-result"
+
+    def test_approve_twice_calls_fn_only_once(self):
+        executor, calls = self._executor_and_park()
+        executor.approve("idem-ap-key")
+        executor.approve("idem-ap-key")
+        assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Cycle 14: reject() removes request from pending; idempotent; unknown key raises
+# ---------------------------------------------------------------------------
+
+class TestReject:
+    def _executor_and_park(self, key="rj-key-001"):
+        from engine.tools.registry import ToolRegistry
+        from engine.tools.executor import ToolExecutor
+
+        spec = _make_spec("test.rj_t3", tier=AutonomyTier.T3, mode=ToolMode.write)
+        fn = lambda inputs, dry_run=False: "result"
+
+        registry = ToolRegistry()
+        registry.register(spec, fn)
+        executor = ToolExecutor(registry)
+        executor.execute(
+            "test.rj_t3",
+            inputs={},
+            scope=_entity_scope(),
+            requesting_agent="account-agent",
+            principal="client-northpath-001",
+            rationale="test",
+            idempotency_key=key,
+        )
+        return executor
+
+    def test_reject_removes_from_pending(self):
+        executor = self._executor_and_park()
+        executor.reject("rj-key-001", reason="not appropriate")
+        assert executor.list_pending() == []
+
+    def test_reject_idempotent_second_call_does_not_raise(self):
+        executor = self._executor_and_park("rj-key-002")
+        executor.reject("rj-key-002", reason="first")
+        executor.reject("rj-key-002", reason="second")  # must not raise
+
+    def test_reject_unknown_key_raises(self):
+        executor = self._executor_and_park("rj-key-003")
+        with pytest.raises(KeyError):
+            executor.reject("nonexistent-key", reason="test")

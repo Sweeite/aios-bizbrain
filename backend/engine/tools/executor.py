@@ -25,7 +25,37 @@ class ToolExecutor:
     ) -> None:
         self._registry = registry
         self._parked: dict[str, ParkedApprovalRequest] = {}
+        self._parked_fns: dict[str, tuple[Callable, dict]] = {}
+        self._resolved: set[str] = set()
+        self._resolved_results: dict[str, str] = {}
         self._on_park = on_park
+
+    def list_pending(self) -> list[ParkedApprovalRequest]:
+        return list(self._parked.values())
+
+    def approve(self, idempotency_key: str, override_body: str | None = None) -> str:
+        if idempotency_key in self._resolved:
+            return self._resolved_results.get(idempotency_key, "")
+        if idempotency_key not in self._parked_fns:
+            raise KeyError(idempotency_key)
+        fn, inputs = self._parked_fns[idempotency_key]
+        if override_body is not None:
+            inputs = {**inputs, "body": override_body}
+        result = fn(inputs, dry_run=False)
+        del self._parked[idempotency_key]
+        del self._parked_fns[idempotency_key]
+        self._resolved.add(idempotency_key)
+        self._resolved_results[idempotency_key] = result
+        return result
+
+    def reject(self, idempotency_key: str, reason: str) -> None:
+        if idempotency_key in self._resolved:
+            return
+        if idempotency_key not in self._parked:
+            raise KeyError(idempotency_key)
+        del self._parked[idempotency_key]
+        del self._parked_fns[idempotency_key]
+        self._resolved.add(idempotency_key)
 
     def execute(
         self,
@@ -63,6 +93,7 @@ class ToolExecutor:
             idempotency_key=idempotency_key,
         )
         self._parked[idempotency_key] = request
+        self._parked_fns[idempotency_key] = (fn, dict(inputs))
         if self._on_park is not None:
             self._on_park(request)
         return request
