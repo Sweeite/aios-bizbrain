@@ -2,6 +2,16 @@ import uuid
 from datetime import datetime, timezone
 
 from engine.agent.agents.account import AccountAgent, AgentStepResult
+from engine.agent.agents.comms import CommsAgent
+from engine.agent.agents.delivery import DeliveryAgent
+from engine.agent.agents.finance import FinanceAgent
+
+_AGENT_IMPLEMENTATIONS: dict[str, type] = {
+    "account-agent": AccountAgent,
+    "comms-agent": CommsAgent,
+    "delivery-agent": DeliveryAgent,
+    "finance-agent": FinanceAgent,
+}
 from engine.agent.live import LiveQuery
 from engine.agent.registry import AgentRegistry
 from engine.agent.span_emitter import SpanEmitter
@@ -39,9 +49,11 @@ class Orchestrator:
         trigger: str,
         entity_ref: str,
         parent_scope: Scope | None = None,
+        request_scope: Scope | None = None,
     ) -> AgentStepResult:
         run_id = str(uuid.uuid4())
-        request_scope = Scope(level=ScopeLevel.entity, entity_ref=entity_ref)
+        if request_scope is None:
+            request_scope = Scope(level=ScopeLevel.entity, entity_ref=entity_ref)
 
         # Create and persist run record
         run_started = datetime.now(timezone.utc)
@@ -93,7 +105,8 @@ class Orchestrator:
         live_context = self._live.query(entity_ref)
 
         # Reason + act (fused context reaches agent)
-        result = AccountAgent().run(
+        agent_cls = _AGENT_IMPLEMENTATIONS.get(spec.name, AccountAgent)
+        result = agent_cls().run(
             entity_ref=entity_ref,
             memory_records=memory_records,
             live_context=live_context,
@@ -149,9 +162,11 @@ class Orchestrator:
 
 
 def _resolve_scope(spec_scope: Scope, entity_ref: str) -> Scope:
-    """Resolve placeholder entity_ref in AgentSpec scope to the actual entity."""
+    """Resolve placeholder refs in AgentSpec scope to the actual entity."""
     if spec_scope.level == ScopeLevel.entity:
         return Scope(level=ScopeLevel.entity, entity_ref=entity_ref)
+    if spec_scope.level == ScopeLevel.user_private:
+        return Scope(level=ScopeLevel.user_private, user_ref=entity_ref)
     return Scope(level=spec_scope.level)
 
 

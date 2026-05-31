@@ -54,6 +54,8 @@ CONSULTING_AGENTS: list[AgentSpec] = [
             "quickbooks.get_invoice",
             "quickbooks.create_invoice",
             "harvest.get_budget_status",
+            "quickbooks.pay_bill",
+            "harvest.run_payroll",
         ],
         model_tier={"default": "strong", "invoice_status": "cheap"},
         wake_triggers=["invoice.issued", "invoice.paid", "human_directed"],

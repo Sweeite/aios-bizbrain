@@ -121,4 +121,25 @@ CONSULTING_TOOLS: list[ToolSpec] = [
         reversible=False,
         side_effects=["slack_message_sent"],
     ),
+    # ── Finance T4 (prepare-only — human executes) ───────────────────────────
+    ToolSpec(
+        name="quickbooks.pay_bill",
+        inputs={"bill_id": "string", "amount": "number", "vendor": "string"},
+        system="quickbooks",
+        mode=ToolMode.write,
+        tier=AutonomyTier.T4,
+        scope_required=ScopeLevel.org,
+        reversible=False,
+        side_effects=["payment_initiated"],
+    ),
+    ToolSpec(
+        name="harvest.run_payroll",
+        inputs={"pay_period": "string"},
+        system="harvest",
+        mode=ToolMode.write,
+        tier=AutonomyTier.T4,
+        scope_required=ScopeLevel.org,
+        reversible=False,
+        side_effects=["payroll_run"],
+    ),
 ]

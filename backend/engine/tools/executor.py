@@ -198,6 +198,10 @@ class ToolExecutor:
         if spec.tier in _IMMEDIATE_TIERS:
             return fn(inputs, dry_run=False)
 
+        if spec.tier == AutonomyTier.T4:
+            # Prepare-only: system never executes, human runs the artifact
+            return fn(inputs, dry_run=True)
+
         # T3: park — idempotency check first
         if idempotency_key in self._parked:
             return self._parked[idempotency_key]

@@ -183,6 +183,60 @@ Expected response shape:
 
 ---
 
+---
+
+## Slice 12 — Remaining agents: Comms, Delivery, Finance
+
+### Unit tests (automated)
+
+`pytest tests/test_slice12_agents.py -v` — 28 behavioural tests across 7 cycles:
+
+| Cycle | What it proves |
+|-------|----------------|
+| 1 | T4 executor returns prepare artifact (string), never `ParkedApprovalRequest`; fn called with `dry_run=True` only |
+| 2 | Orchestrator dispatches by spec name — `milestone.hit` → DeliveryAgent, `invoice.paid` → FinanceAgent |
+| 3 | DeliveryAgent produces delivery summary draft; span has correct actor/model/tokens |
+| 4 | CommsAgent produces routine reply for non-substantive email; classification uses Haiku |
+| 5 | CommsAgent → AccountAgent handoff: substantive client email returns `agent_name == "account-agent"` |
+| 6 | FinanceAgent produces prepare-only draft; `result.parked is None` even with T4 executor attached |
+| 7 | Full 4-agent routing from CONSULTING_AGENTS roster; catalog has T4 tools; user_private scope resolves for comms |
+
+### Sample prompts / trigger → expected behaviour
+
+| Trigger | entity_ref | Expected agent | Key assertion |
+|---------|-----------|---------------|---------------|
+| `deal.stage_changed` | `client-northpath-001` | `account-agent` | Draft nudge email; T3 park if executor present |
+| `milestone.hit` | `engagement-northpath-001` | `delivery-agent` | Delivery status summary; `result.parked is None` |
+| `due_date.slipped` | `engagement-northpath-001` | `delivery-agent` | Scope conversation draft |
+| `harvest.budget_threshold_crossed` | `engagement-northpath-001` | `delivery-agent` | Budget alert in draft |
+| `invoice.issued` | `org` | `finance-agent` | AR summary; `result.parked is None` even with executor |
+| `invoice.paid` | `org` | `finance-agent` | Finance summary with prepare packages |
+| `email.received.significant` | `principal-austin` | `comms-agent` (routine) or `account-agent` (handoff) | Routing by LLM classification |
+| `human_directed` | any | whichever agent is registered for entity scope | Draft response |
+
+### Comms → Account handoff logic
+
+CommsAgent runs a two-step pattern:
+1. **Classify** (Haiku): `{"is_client_substantive": true/false, "client_ref": "<ref>"}`
+2. If substantive **and** `client_ref` present → delegates to `AccountAgent`, returns its result
+3. If routine (or corrupt JSON) → Sonnet drafts routine reply; `agent_name == "comms-agent"`
+
+### Finance T4 ceiling
+
+`quickbooks.pay_bill` and `harvest.run_payroll` are T4 in the catalog. `ToolExecutor.execute()` for T4 tools:
+- Calls `fn(inputs, dry_run=True)` → returns prepare artifact string
+- Never creates a `ParkedApprovalRequest`
+- Human takes the artifact and executes manually
+
+Verify by running:
+
+```bash
+pytest tests/test_slice12_agents.py::TestT4PrepareOnly -v
+pytest tests/test_slice12_agents.py::TestFinanceAgent::test_parked_is_none_even_with_t4_executor -v
+```
+
+---
+
 ## Earlier slices
 
 | Slice | Test file | Key behaviour |

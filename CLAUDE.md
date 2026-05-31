@@ -19,7 +19,7 @@ Three-layer architecture:
 # Backend
 cd backend
 pip install -e ".[dev]"          # run once per session if deps missing
-pytest tests/ -v                 # 178 tests, all green
+pytest tests/ -v                 # 230 tests, all green
 uvicorn app.main:app --reload    # http://localhost:8000
 
 # Cockpit
@@ -34,33 +34,35 @@ Key env vars in `backend/.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AN
 
 ## Slice progress
 
-| # | Slice | Status |
-|---|-------|--------|
-| 1 | Scaffold — monorepo, spine types, Supabase schema | ✅ done |
-| 2 | Mock ingestion — deal stalled → episodic memory | ✅ done |
-| 3 | Celery + Redis — reflection hook fires after memory write | ✅ done |
-| 4 | Account agent — Anthropic API, memory recall + live context | ✅ done |
-| 5 | Commitment gate + T3 — draft email parks as approval request | ✅ done |
-| 6 | Approval Queue — FastAPI + cockpit UI (approve/edit/reject) | ✅ done |
-| 7 | Observability — trace tree, eval labels, immutable audit log | ✅ done |
-| 8 | Cockpit — Chat interface (streaming, prompt-kit) | ✅ done |
-| 9 | Cockpit — Home / Today (pending approvals, daily brief) | ⬜ next |
-| 10 | Consolidation + reconciliation Celery tasks | ⬜ |
-| 11 | Full mock connector set — all 8 systems | ⬜ |
-| 12 | Remaining agents — Comms, Delivery, Finance | ⬜ |
-| 13 | Notification delivery — Resend email + Slack webhook | ⬜ |
-| 14 | Cockpit — Activity Feed (recent runs, trace tree drilldown) | ⬜ |
-| 15 | Cockpit — Client Profiles | ⬜ |
-| 16 | Cockpit — Integrations / Health | ⬜ |
-| 17 | Real connector — Gmail (OAuth, Pub/Sub webhook) | ⬜ |
-| 18 | Real connectors — HubSpot, Asana, Slack, QuickBooks, Harvest | ⬜ |
-| 19 | Cockpit — Memory Browser | ⬜ |
-| 20 | Cockpit — Settings (Trust Dial, RBAC) | ⬜ |
-| 21 | Cockpit — Audit Log view | ⬜ |
-| 22 | Cockpit — Cost & ROI | ⬜ |
-| 23 | Boilerplate acceptance test — second client, pack swap | ⬜ |
+GitHub issues are the source of truth for status. Issue #1 is the PRD; slices start at issue #2.
 
-Next issue to pick up: **#10 (Slice 9 — Home / Today)**
+| GH # | Slice | Description | Status |
+|------|-------|-------------|--------|
+| #2 | 1 | Scaffold — monorepo, spine types, Supabase schema | ✅ done |
+| #3 | 2 | Mock ingestion — deal stalled → episodic memory | ✅ done |
+| #4 | 3 | Celery + Redis — reflection hook fires after memory write | ✅ done |
+| #5 | 4 | Account agent — Anthropic API, memory recall + live context | ✅ done |
+| #6 | 5 | Commitment gate + T3 — draft email parks as approval request | ✅ done |
+| #7 | 6 | Approval Queue — FastAPI + cockpit UI (approve/edit/reject) | ✅ done |
+| #8 | 7 | Observability — trace tree, eval labels, immutable audit log | ✅ done |
+| #9 | 8 | Cockpit — Chat interface (streaming, prompt-kit) | ✅ done |
+| #10 | 9 | Cockpit — Home / Today (pending approvals, daily brief) | ✅ done |
+| #11 | 10 | Consolidation + reconciliation Celery tasks | ✅ done |
+| #12 | 11 | Full mock connector set — all 8 systems | ✅ done |
+| #13 | 12 | Remaining agents — Comms, Delivery, Finance | ✅ done |
+| #14 | 13 | Notification delivery — Resend email + Slack webhook | ⬜ |
+| #15 | 14 | Cockpit — Activity Feed (recent runs, trace tree drilldown) | ⬜ |
+| #16 | 15 | Cockpit — Client Profiles | ⬜ |
+| #17 | 16 | Cockpit — Integrations / Health | ⬜ |
+| #18 | 17 | Real connector — Gmail (OAuth, Pub/Sub webhook) | ⬜ |
+| #19 | 18 | Real connectors — HubSpot, Asana, Slack, QuickBooks, Harvest | ⬜ |
+| #20 | 19 | Cockpit — Memory Browser | ⬜ |
+| #21 | 20 | Cockpit — Settings (Trust Dial, RBAC) | ⬜ |
+| #22 | 21 | Cockpit — Audit Log view | ⬜ |
+| #23 | 22 | Cockpit — Cost & ROI | ⬜ |
+| #24 | 23 | Boilerplate acceptance test — second client, pack swap | ⬜ |
+
+Next issue to pick up: **#14 (Slice 13 — Notification delivery: Resend email + Slack webhook)**
 
 ---
 
@@ -88,13 +90,17 @@ Next issue to pick up: **#10 (Slice 9 — Home / Today)**
 
 ## What's built
 
-**Backend (fully tested, 171 tests green)**
+**Backend (fully tested, 230 tests green)**
 - `engine/spine/types.py` — all domain types (Span, Run, AuditRecord, MemoryRecord, ParkedApprovalRequest, AutonomyTier T0–T4, Scope)
 - `engine/ingestion/` — BusinessEvent → EntityResolver → MemoryWriter (guardrails: dedup, live-owned field protection, review queue)
 - `engine/agent/` — AgentRegistry (declarative routing), Orchestrator (creates Run, emits spans), AccountAgent (Anthropic Sonnet, fused memory+live), SpanEmitter (persists to SpanStore)
 - `engine/tools/` — ToolRegistry, ToolExecutor (T0/T1 immediate, T3 park+approve), CommitmentGate, DraftEmailTool
 - `engine/observability/` — InMemorySpanStore, InMemoryRunStore, InMemoryAuditStore (immutable — raises on UPDATE/DELETE)
 - `engine/worker/` — Celery + Redis, reflect_on_step task (Haiku evaluates agent output)
+- `packs/consulting/connectors/` — 8 mock connectors (HubSpot, Gmail, Calendar, Asana, Slack, QuickBooks, Harvest, Zoom) + ConnectorRegistry with pull_all() dedup
+- `engine/consolidation/` — Consolidator: episodic → entity fact promotion, superseded_at marking, rolling digest via summarize()
+- `engine/reconciliation/` — Reconciler: cursor-based sweep, miss detection, gap-triggered flag
+- `engine/worker/tasks/consolidation.py` + `reconciliation.py` — Celery tasks wiring both into the worker
 
 **API (FastAPI)**
 - `GET /approvals` — list pending T3 requests
