@@ -375,6 +375,51 @@ cd cockpit && npm run dev
 
 ---
 
+## Slice 15 — Client Profiles
+
+### Unit tests (automated)
+
+`pytest tests/test_clients.py -v` — 19 behavioural tests across 5 cycles:
+
+| Cycle | What it proves |
+|-------|----------------|
+| 1 | GET /clients returns 200 with a list |
+| 2 | List items have id, name, deal_stage; Northpath shows Proposal from HubSpot |
+| 3 | GET /clients/{id} returns 200 with profile; 404 for unknown client |
+| 4 | Profile has brain_understanding (entity_facts + episodic_history) with populated records; live_status has deal, budget, open_tasks, invoices |
+| 5 | Scope filter: entity-scoped list returns only matching client; mismatched scope on detail returns 403 |
+
+### Proving path (no server required)
+
+```bash
+cd backend
+python3 scripts/prove_slice15.py
+```
+
+Expected: all PASS — 3 clients, scoped filtering, northpath deal from HubSpot, meridian budget + invoice, scope enforcement.
+
+### Manual browser test
+
+```bash
+# Terminal 1
+cd backend && uvicorn app.main:app --reload
+
+# Terminal 2
+cd cockpit && npm run dev
+```
+
+1. Open `http://localhost:3000/cockpit/clients`
+2. Confirm "Clients" appears in the sidebar nav
+3. Confirm the list shows Northpath (Proposal badge), Meridian Capital, Vertex Partners
+4. Click Northpath → detail page shows:
+   - **Live Status**: deal (Northpath Q3 Audit, Proposal, 21d), Harvest engagement closed
+   - **Brain Understanding**: episodic history with HubSpot + Asana + Harvest events
+5. Click Meridian → live status shows budget at 80% threshold, INV-007 open invoice
+6. Click Vertex → live status shows slipped Asana task and INV-006 paid invoice
+7. Confirm episodic records clearly labelled with confidence level and source provenance
+
+---
+
 ## Earlier slices
 
 | Slice | Test file | Key behaviour |

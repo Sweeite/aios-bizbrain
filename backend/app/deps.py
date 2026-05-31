@@ -1,3 +1,6 @@
+from engine.clients.profile_service import ClientProfileService
+from engine.ingestion.entity_resolver import EntityResolver
+from engine.ingestion.memory_writer import MemoryWriter
 from engine.observability.run_store import InMemoryRunStore
 from engine.observability.span_store import InMemorySpanStore
 from engine.tools.executor import ToolExecutor
@@ -6,6 +9,7 @@ from engine.tools.registry import ToolRegistry
 _executor: ToolExecutor | None = None
 _run_store: InMemoryRunStore | None = None
 _span_store: InMemorySpanStore | None = None
+_client_profile_service: ClientProfileService | None = None
 
 
 def get_executor() -> ToolExecutor:
@@ -27,3 +31,19 @@ def get_span_store() -> InMemorySpanStore:
     if _span_store is None:
         _span_store = InMemorySpanStore()
     return _span_store
+
+
+def get_client_profile_service() -> ClientProfileService:
+    global _client_profile_service
+    if _client_profile_service is None:
+        from packs.consulting.clients import CLIENTS, KNOWN_CLIENT_IDS
+        from packs.consulting.connectors.registry import ConnectorRegistry
+
+        events = ConnectorRegistry().pull_all()
+        resolver = EntityResolver({cid: cid for cid in KNOWN_CLIENT_IDS})
+        writer = MemoryWriter()
+        for event in events:
+            resolved = resolver.resolve(event)
+            writer.write(resolved)
+        _client_profile_service = ClientProfileService(CLIENTS, writer, events)
+    return _client_profile_service

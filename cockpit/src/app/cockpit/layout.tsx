@@ -15,6 +15,7 @@ export default function CockpitLayout({
         <NavLink href="/cockpit/chat">Chat</NavLink>
         <NavLink href="/cockpit/approvals">Approvals</NavLink>
         <NavLink href="/cockpit/activity">Activity</NavLink>
+        <NavLink href="/cockpit/clients">Clients</NavLink>
       </nav>
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
