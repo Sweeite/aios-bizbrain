@@ -19,7 +19,7 @@ Three-layer architecture:
 # Backend
 cd backend
 pip install -e ".[dev]"          # run once per session if deps missing
-pytest tests/ -v                 # 171 tests, all green
+pytest tests/ -v                 # 178 tests, all green
 uvicorn app.main:app --reload    # http://localhost:8000
 
 # Cockpit
@@ -43,8 +43,8 @@ Key env vars in `backend/.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AN
 | 5 | Commitment gate + T3 — draft email parks as approval request | ✅ done |
 | 6 | Approval Queue — FastAPI + cockpit UI (approve/edit/reject) | ✅ done |
 | 7 | Observability — trace tree, eval labels, immutable audit log | ✅ done |
-| 8 | Cockpit — Chat interface (streaming, prompt-kit) | ⬜ next |
-| 9 | Cockpit — Home / Today (pending approvals, daily brief) | ⬜ |
+| 8 | Cockpit — Chat interface (streaming, prompt-kit) | ✅ done |
+| 9 | Cockpit — Home / Today (pending approvals, daily brief) | ⬜ next |
 | 10 | Consolidation + reconciliation Celery tasks | ⬜ |
 | 11 | Full mock connector set — all 8 systems | ⬜ |
 | 12 | Remaining agents — Comms, Delivery, Finance | ⬜ |
@@ -60,7 +60,7 @@ Key env vars in `backend/.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AN
 | 22 | Cockpit — Cost & ROI | ⬜ |
 | 23 | Boilerplate acceptance test — second client, pack swap | ⬜ |
 
-Next issue to pick up: **#9 (Slice 8 — Chat interface)**
+Next issue to pick up: **#10 (Slice 9 — Home / Today)**
 
 ---
 
