@@ -1,11 +1,12 @@
 import uuid
+from datetime import datetime, timezone
 
 from engine.agent.agents.account import AccountAgent, AgentStepResult
 from engine.agent.live import LiveQuery
 from engine.agent.registry import AgentRegistry
 from engine.agent.span_emitter import SpanEmitter
 from engine.ingestion.memory_writer import MemoryWriter
-from engine.spine.types import Scope, ScopeLevel
+from engine.spine.types import Run, Scope, ScopeLevel, Span, SpanOp
 
 ROUTING_MODEL = "claude-haiku-4-5-20251001"
 
@@ -21,6 +22,7 @@ class Orchestrator:
         reflection_task=None,
         tool_executor=None,
         idempotency_key: str | None = None,
+        run_store=None,
     ) -> None:
         self._registry = registry
         self._memory = memory_writer
@@ -30,6 +32,7 @@ class Orchestrator:
         self._reflection_task = reflection_task
         self._tool_executor = tool_executor
         self._idempotency_key = idempotency_key
+        self._run_store = run_store
 
     def handle(
         self,
@@ -40,6 +43,18 @@ class Orchestrator:
         run_id = str(uuid.uuid4())
         request_scope = Scope(level=ScopeLevel.entity, entity_ref=entity_ref)
 
+        # Create and persist run record
+        run_started = datetime.now(timezone.utc)
+        run = Run(
+            run_id=run_id,
+            initiated_by=trigger,
+            scope=request_scope,
+            started_at=run_started,
+            status="running",
+        )
+        if self._run_store is not None:
+            self._run_store.save(run)
+
         # Route: capability + scope match (declarative — no hardcoded agent names)
         spec = self._registry.route(trigger, request_scope)
 
@@ -47,8 +62,32 @@ class Orchestrator:
         resolved = _resolve_scope(spec.scope, entity_ref)
         agent_scope = _bound_scope(resolved, parent_scope)
 
-        # Recall — scope-filtered episodic memory
+        # Orchestrator span wraps the whole operation
+        orch_span_id = str(uuid.uuid4())
+        orch_started = datetime.now(timezone.utc)
+
+        # Recall — scope-filtered episodic memory (emit memory span)
+        recall_started = datetime.now(timezone.utc)
         memory_records = self._memory.recall(entity_ref, agent_scope)
+        recall_ended = datetime.now(timezone.utc)
+
+        mem_span = Span(
+            span_id=str(uuid.uuid4()),
+            run_id=run_id,
+            parent_span_id=orch_span_id,
+            actor="memory-writer",
+            op=SpanOp.memory,
+            input_ref=f"recall:{entity_ref}",
+            output_ref=f"records:{len(memory_records)}",
+            started_at=recall_started,
+            ended_at=recall_ended,
+            model_tier="n/a",
+            token_in=0,
+            token_out=0,
+            scope=agent_scope,
+            status="ok",
+        )
+        self._emitter.emit(mem_span)
 
         # Live context (always fused — never chosen over recall)
         live_context = self._live.query(entity_ref)
@@ -63,9 +102,40 @@ class Orchestrator:
             anthropic_client=self._client,
             tool_executor=self._tool_executor,
             idempotency_key=self._idempotency_key,
+            parent_span_id=orch_span_id,
         )
 
         self._emitter.emit(result.span)
+
+        # Emit orchestrator span
+        orch_span = Span(
+            span_id=orch_span_id,
+            run_id=run_id,
+            parent_span_id=None,
+            actor="orchestrator",
+            op=SpanOp.reason,
+            input_ref=f"trigger:{trigger}:{entity_ref}",
+            output_ref=f"agent_result:{entity_ref}",
+            started_at=orch_started,
+            ended_at=datetime.now(timezone.utc),
+            model_tier="n/a",
+            token_in=0,
+            token_out=0,
+            scope=agent_scope,
+            status="ok",
+        )
+        self._emitter.emit(orch_span)
+
+        # Mark run as done
+        if self._run_store is not None:
+            self._run_store.save(Run(
+                run_id=run_id,
+                initiated_by=trigger,
+                scope=request_scope,
+                started_at=run_started,
+                ended_at=datetime.now(timezone.utc),
+                status="done",
+            ))
 
         if self._reflection_task is not None:
             self._reflection_task.delay(

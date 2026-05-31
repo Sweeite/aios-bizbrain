@@ -28,6 +28,7 @@ class AccountAgent:
         anthropic_client,
         tool_executor=None,
         idempotency_key: str | None = None,
+        parent_span_id: str | None = None,
     ) -> AgentStepResult:
         memory_summary = "\n".join(
             f"- {r.payload.get('event_type', 'event')}: "
@@ -61,6 +62,7 @@ class AccountAgent:
         span = Span(
             span_id=str(uuid.uuid4()),
             run_id=run_id,
+            parent_span_id=parent_span_id,
             actor=self.name,
             op=SpanOp.reason,
             input_ref=f"recall:{entity_ref}+live:{entity_ref}",
@@ -90,6 +92,8 @@ class AccountAgent:
                 principal=entity_ref,
                 rationale="nudge stalled deal",
                 idempotency_key=idem_key,
+                run_id=run_id,
+                parent_span_id=span.span_id,
             )
             if isinstance(result, ParkedApprovalRequest):
                 parked = result

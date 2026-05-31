@@ -338,14 +338,15 @@ class TestOrchestrator:
             orch.handle("deal.stage_changed", "client-northpath-001")
 
     def test_emits_span_after_step(self):
+        from engine.spine.types import SpanOp
         orch, emitter, _ = self._build()
         orch.handle("deal.stage_changed", "client-northpath-001")
 
-        assert len(emitter.spans()) == 1
-        s = emitter.spans()[0]
-        assert s.token_in > 0
-        assert s.token_out > 0
-        assert s.model_tier == "claude-sonnet-4-6"
+        # Orchestrator now emits memory-recall span, agent span, and orchestrator span
+        agent_span = next(s for s in emitter.spans() if s.actor == "account-agent")
+        assert agent_span.token_in > 0
+        assert agent_span.token_out > 0
+        assert agent_span.model_tier == "claude-sonnet-4-6"
 
     def test_fuses_recall_and_live_context(self):
         """Both sources must contribute to the Anthropic prompt."""
@@ -578,11 +579,9 @@ class TestEndToEnd:
         # Draft produced
         assert len(result.draft) > 10
 
-        # Span emitted with full cost attribution
-        assert len(emitter.spans()) == 1
-        s = emitter.spans()[0]
+        # Agent span emitted with full cost attribution (orchestrator also emits memory + orch spans)
+        s = next(sp for sp in emitter.spans() if sp.actor == "account-agent")
         assert s.op == SpanOp.reason
-        assert s.actor == "account-agent"
         assert s.model_tier == "claude-sonnet-4-6"
         assert s.token_in == 200
         assert s.token_out == 80

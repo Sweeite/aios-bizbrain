@@ -196,6 +196,31 @@ class Span(BaseModel):
     scope: Scope
     status: str
     outcome: str | None = None
+    eval_label: str | None = None
+    eval_note: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# AuditRecord
+# ---------------------------------------------------------------------------
+
+class AuditRecord(BaseModel):
+    id: str
+    action: str
+    tool_name: str | None = None
+    tier: str | None = None
+    agent: str
+    principal: str
+    scope_level: str
+    scope_entity_ref: str | None = None
+    approval_ref: str | None = None
+    idempotency_key: str
+    outcome: str
+    payload_ref: str | None = None
+    occurred_at: datetime
+    approver: str | None = None
+    before_state: str | None = None
+    after_state: str | None = None
 
 
 # ---------------------------------------------------------------------------
