@@ -7,17 +7,9 @@ from pydantic import BaseModel
 from engine.spine.types import AutonomyTier, ParkedApprovalRequest, Scope, ScopeLevel, ToolMode, ToolSpec
 from engine.tools.executor import ToolExecutor
 from engine.tools.registry import ToolRegistry
+from app.deps import get_executor
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
-
-_executor: ToolExecutor | None = None
-
-
-def get_executor() -> ToolExecutor:
-    global _executor
-    if _executor is None:
-        _executor = ToolExecutor(ToolRegistry())
-    return _executor
 
 
 class ApproveRequest(BaseModel):

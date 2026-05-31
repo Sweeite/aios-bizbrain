@@ -53,7 +53,7 @@ def _park(executor: ToolExecutor, key: str, inputs: dict | None = None, spec_nam
 
 def _client(executor: ToolExecutor) -> TestClient:
     from app.main import app
-    from app.approvals import get_executor
+    from app.deps import get_executor
     app.dependency_overrides[get_executor] = lambda: executor
     return TestClient(app)
 
