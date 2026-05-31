@@ -236,6 +236,23 @@ class AuditRecord(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# ConnectorHealthRecord
+# ---------------------------------------------------------------------------
+
+class ConnectorStatus(str, Enum):
+    healthy = "healthy"
+    degraded = "degraded"
+    broken = "broken"
+
+
+class ConnectorHealthRecord(BaseModel):
+    source_system: str
+    status: ConnectorStatus = ConnectorStatus.healthy
+    last_sync_at: datetime | None = None
+    error_message: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # IdempotencyKey
 # ---------------------------------------------------------------------------
 

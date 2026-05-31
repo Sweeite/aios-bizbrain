@@ -13,6 +13,7 @@ from app.approvals import router as approvals_router
 from app.chat import router as chat_router
 from app.clients import router as clients_router
 from app.home import router as home_router
+from app.integrations import router as integrations_router
 from app.traces import router as traces_router
 
 load_dotenv()
@@ -23,6 +24,7 @@ app.include_router(approvals_router)
 app.include_router(chat_router)
 app.include_router(clients_router)
 app.include_router(home_router)
+app.include_router(integrations_router)
 app.include_router(traces_router)
 
 

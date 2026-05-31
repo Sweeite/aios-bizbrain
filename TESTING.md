@@ -687,3 +687,66 @@ Open http://localhost:3000/cockpit/approvals — expect:
    ```
    → returns `{"status":"rejected"}` (idempotent)
 
+
+---
+
+## Slice 16: Cockpit — Integrations / Health
+
+### QA-2: Integrations page
+
+With both backend and cockpit running:
+
+```bash
+cd backend && .venv/bin/uvicorn app.main:app --reload
+cd cockpit && npm run dev
+```
+
+**Healthy state:**
+
+Open http://localhost:3000/cockpit/integrations — expect:
+- All 8 connectors listed: HubSpot, Gmail, Google Calendar, Asana, Slack, QuickBooks, Harvest, Zoom
+- Each shows a green "Healthy" badge
+- Last sync shows "Never" (no syncs have run yet)
+- No reconnect buttons visible
+- No alert banner at the top
+
+**Broken connector state:**
+
+Simulate a broken connector via the API:
+
+```bash
+# Trigger a failed sync for gmail
+curl -s http://localhost:8000/integrations/health | python3 -m json.tool
+# → all 8 connectors, status=healthy
+
+# There is no direct "break" endpoint — this is simulated in tests.
+# To manually test: restart the server and use the test override pattern
+# (see tests/test_integrations.py TestBrokenConnectorSurfaces).
+```
+
+In the automated test, `svc.record_sync("gmail", success=False, error_message="auth_expired")` sets the
+broken state. Verify the UI:
+- Gmail row shows a red "Broken" badge
+- Error message `auth_expired` appears in a red alert box below the row
+- A "Reconnect" button appears on the Gmail row
+- A banner at the top reads "1 connector needs attention"
+- All other connectors remain green "Healthy"
+
+**Reconnect action:**
+
+```bash
+curl -s -X POST http://localhost:8000/integrations/gmail/reconnect | python3 -m json.tool
+# → {"source_system": "gmail", "status": "healthy", "last_sync_at": null, "error_message": null}
+```
+
+In the UI, clicking "Reconnect" on a broken connector:
+- Button shows "Reconnecting…" while the request is in flight
+- On success the page refreshes and Gmail shows as "Healthy" again
+- No alert banner or error block visible
+
+**Unknown connector 404:**
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/integrations/not_a_system/reconnect
+# → 404
+```

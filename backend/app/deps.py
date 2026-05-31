@@ -1,4 +1,5 @@
 from engine.clients.profile_service import ClientProfileService
+from engine.connectors.health_service import ConnectorHealthService
 from engine.ingestion.entity_resolver import EntityResolver
 from engine.ingestion.memory_writer import MemoryWriter
 from engine.observability.run_store import InMemoryRunStore
@@ -10,6 +11,7 @@ _executor: ToolExecutor | None = None
 _run_store: InMemoryRunStore | None = None
 _span_store: InMemorySpanStore | None = None
 _client_profile_service: ClientProfileService | None = None
+_connector_health_service: ConnectorHealthService | None = None
 
 
 def get_executor() -> ToolExecutor:
@@ -31,6 +33,13 @@ def get_span_store() -> InMemorySpanStore:
     if _span_store is None:
         _span_store = InMemorySpanStore()
     return _span_store
+
+
+def get_connector_health_service() -> ConnectorHealthService:
+    global _connector_health_service
+    if _connector_health_service is None:
+        _connector_health_service = ConnectorHealthService()
+    return _connector_health_service
 
 
 def get_client_profile_service() -> ClientProfileService:
