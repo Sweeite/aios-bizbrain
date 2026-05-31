@@ -48,6 +48,8 @@ NOTIFICATIONS = {
     "routine_via": ["cockpit_queue"],
     "slack_channel_urgent": "#ai-brain-urgent",
     "email_address": "partners@northpath.example.com",
+    "digest_email_address": "partners@northpath.example.com",
+    "digest_schedule_cron": "0 7 * * *",  # 07:00 daily
 }
 
 # ── Slack flags (what to capture from Slack) ─────────────────────────────────

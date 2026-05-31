@@ -26,6 +26,7 @@ class ToolExecutor:
         on_park: Callable[[ParkedApprovalRequest], None] | None = None,
         span_emitter=None,
         audit_store=None,
+        notification_router=None,
     ) -> None:
         self._registry = registry
         self._parked: dict[str, ParkedApprovalRequest] = {}
@@ -35,6 +36,7 @@ class ToolExecutor:
         self._on_park = on_park
         self._emitter = span_emitter
         self._audit_store = audit_store
+        self._notification_router = notification_router
 
     def list_pending(self) -> list[ParkedApprovalRequest]:
         return list(self._parked.values())
@@ -231,4 +233,6 @@ class ToolExecutor:
         }
         if self._on_park is not None:
             self._on_park(request)
+        if self._notification_router is not None:
+            self._notification_router.route(request)
         return request

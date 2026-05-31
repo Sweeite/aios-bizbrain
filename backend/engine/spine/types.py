@@ -97,6 +97,7 @@ class MemoryRecord(BaseModel):
     temporal_validity: dict[str, Any]  # {as_of, lifespan_days}
     scope: Scope
     confidence: Confidence
+    superseded_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +134,16 @@ class ToolSpec(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# UrgencyLevel
+# ---------------------------------------------------------------------------
+
+class UrgencyLevel(str, Enum):
+    high = "high"
+    routine = "routine"
+    low = "low"
+
+
+# ---------------------------------------------------------------------------
 # ParkedApprovalRequest
 # ---------------------------------------------------------------------------
 
@@ -144,6 +155,7 @@ class ParkedApprovalRequest(BaseModel):
     scope: Scope
     rationale: str
     idempotency_key: str
+    urgency: UrgencyLevel = UrgencyLevel.routine
 
 
 # ---------------------------------------------------------------------------

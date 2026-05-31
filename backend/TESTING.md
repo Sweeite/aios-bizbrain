@@ -237,6 +237,104 @@ pytest tests/test_slice12_agents.py::TestFinanceAgent::test_parked_is_none_even_
 
 ---
 
+## Slice 13 — Notification delivery: Resend email + Slack webhook
+
+### Unit tests (automated)
+
+`pytest tests/test_notifications.py -v` — 14 behavioural tests across 5 cycles:
+
+| Cycle | What it proves |
+|-------|----------------|
+| 1–2 | High-urgency parks → email + slack both called; routine → neither called |
+| 3–4 | Low-urgency → digest queue only; flush clears queue |
+| 5 | Router reads `urgent_via` list from config (no hardcoding) |
+| 6–7 | `ResendEmailSender` POSTs to `https://api.resend.com/emails`; raises `NotificationError` on non-2xx |
+| 8–9 | `SlackWebhookSender` POSTs to `SLACK_WEBHOOK_URL`; raises `NotificationError` on non-2xx |
+| 10–11 | ToolExecutor calls `router.route()` on T3 park; existing behaviour unchanged without router |
+| 12–13 | `send_digest` Celery task registered; formats items and calls email sender |
+
+### Triggering a high-urgency notification (manual)
+
+**Prerequisites:**
+1. Set env vars in `backend/.env`:
+   ```
+   RESEND_API_KEY=re_<your-key>
+   NOTIFICATION_EMAIL_FROM=ai-brain@northpath.example.com
+   SLACK_WEBHOOK_URL=https://hooks.slack.com/services/<T>/<B>/<token>
+   ```
+2. Run `python scripts/prove_slice13.py` (see below)
+
+**`backend/scripts/prove_slice13.py`:**
+
+```python
+import os
+from dotenv import load_dotenv
+from engine.notifications.router import NotificationRouter
+from engine.notifications.senders import ResendEmailSender, SlackWebhookSender
+from engine.spine.types import ParkedApprovalRequest, Scope, ScopeLevel, UrgencyLevel
+
+load_dotenv()
+
+config = {
+    "urgent_via": ["slack", "email"],
+    "routine_via": ["cockpit_queue"],
+    "slack_channel_urgent": "#ai-brain-urgent",
+    "email_address": os.getenv("DIGEST_EMAIL_ADDRESS", "partners@northpath.example.com"),
+    "digest_email_address": os.getenv("DIGEST_EMAIL_ADDRESS", "partners@northpath.example.com"),
+}
+
+router = NotificationRouter(config, ResendEmailSender(), SlackWebhookSender())
+
+req = ParkedApprovalRequest(
+    action="draft_email.send",
+    preview="Dear client, confirming engagement commencing June 1...",
+    requesting_agent="comms-agent",
+    principal="partner@northpath.example.com",
+    scope=Scope(level=ScopeLevel.entity, entity_ref="client-northpath-001"),
+    rationale="Client escalation flagged by account agent",
+    idempotency_key="prove-slice13-001",
+    urgency=UrgencyLevel.high,
+)
+
+router.route(req)
+print("High-urgency notification dispatched — check your email + Slack channel.")
+```
+
+```bash
+python scripts/prove_slice13.py
+```
+
+**Expected outcomes:**
+- **Resend**: email arrives at `DIGEST_EMAIL_ADDRESS` with subject `[Urgent] Approval required: draft_email.send`
+- **Slack**: message appears in the configured incoming webhook destination with the approval preview text
+
+### Verifying the digest task
+
+To manually trigger a digest send (skips the cron schedule):
+
+```bash
+cd backend
+python -c "
+from engine.worker.tasks.notifications import send_digest
+from engine.notifications.senders import ResendEmailSender
+send_digest(
+    items=[{'action': 'asana.create_task', 'preview': 'Create follow-up task', 'requesting_agent': 'delivery-agent', 'idempotency_key': 'k1', 'urgency': 'low'}],
+    to_address='partners@northpath.example.com',
+)
+print('Digest queued — check Celery worker logs and email.')
+"
+```
+
+Note: This calls the task function directly (bypasses Celery broker). To test via the full Celery pipeline:
+
+```bash
+celery -A engine.worker.celery_app worker --loglevel=info &
+celery -A engine.worker.celery_app beat --loglevel=info &
+# Wait for 07:00 or manually .apply_async() the task
+```
+
+---
+
 ## Earlier slices
 
 | Slice | Test file | Key behaviour |

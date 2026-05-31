@@ -1,3 +1,3 @@
-from engine.worker.tasks import reflection  # noqa: F401 — register tasks with Celery app
+from engine.worker.tasks import consolidation, notifications, reconciliation, reflection  # noqa: F401 — register tasks
 
-__all__ = ["reflection"]
+__all__ = ["reflection", "consolidation", "reconciliation", "notifications"]
