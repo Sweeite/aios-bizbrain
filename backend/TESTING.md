@@ -335,6 +335,46 @@ celery -A engine.worker.celery_app beat --loglevel=info &
 
 ---
 
+## Slice 14 — Activity Feed: recent runs + trace drilldown
+
+### Unit tests (automated)
+
+`pytest tests/test_activity.py -v` — 19 behavioural tests across 5 cycles:
+
+| Cycle | What it proves |
+|-------|----------------|
+| 1 | RunStore.list() returns all runs in reverse chronological order |
+| 2 | RunStore.list(scope_entity_ref=) filters by entity scope |
+| 3 | GET /activity returns run summaries with trigger, trigger_type, primary_agent, outcome, started_at |
+| 4 | GET /activity?scope= filters to matching entity runs only |
+| 5 | primary_agent derived from first non-infra reason span; null when no spans |
+
+### Proving path (no server required)
+
+```bash
+cd backend
+python3 scripts/prove_slice14.py
+```
+
+Expected: all PASS, prints span tree for the run with memory-writer / account-agent / orchestrator actors.
+
+### Manual browser test
+
+```bash
+# Terminal 1
+cd backend && uvicorn app.main:app --reload
+
+# Terminal 2
+cd cockpit && npm run dev
+```
+
+1. Open `http://localhost:3000/cockpit/activity`
+2. Confirm "Activity" appears in the sidebar nav
+3. Confirm the page loads with an empty-state card ("No runs yet")
+4. The feed is in-memory — no runs appear until an orchestrator run is wired through the live server (comes with real connectors in Slice 17+)
+
+---
+
 ## Earlier slices
 
 | Slice | Test file | Key behaviour |

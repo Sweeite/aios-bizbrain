@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from dotenv import load_dotenv
 
+from app.activity import router as activity_router
 from app.approvals import router as approvals_router
 from app.chat import router as chat_router
 from app.home import router as home_router
@@ -11,6 +12,7 @@ from app.traces import router as traces_router
 load_dotenv()
 
 app = FastAPI(title="AIOS BizBrain", version="0.1.0")
+app.include_router(activity_router)
 app.include_router(approvals_router)
 app.include_router(chat_router)
 app.include_router(home_router)

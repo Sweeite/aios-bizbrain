@@ -29,7 +29,7 @@ from engine.tools.executor import ToolExecutor
 from engine.tools.registry import ToolRegistry
 from app.main import app
 from app.approvals import get_executor
-from app.traces import get_span_store, get_run_store
+from app.deps import get_run_store, get_span_store
 
 # ---------------------------------------------------------------------------
 # Helpers

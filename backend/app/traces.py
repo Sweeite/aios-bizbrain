@@ -1,20 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.deps import get_run_store, get_span_store
 from engine.observability.run_store import InMemoryRunStore
 from engine.observability.span_store import InMemorySpanStore
 
 router = APIRouter(tags=["traces"])
-
-_span_store = InMemorySpanStore()
-_run_store = InMemoryRunStore()
-
-
-def get_span_store() -> InMemorySpanStore:
-    return _span_store
-
-
-def get_run_store() -> InMemoryRunStore:
-    return _run_store
 
 
 @router.get("/runs/{run_id}/trace")

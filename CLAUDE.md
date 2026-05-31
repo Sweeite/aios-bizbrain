@@ -19,7 +19,7 @@ Three-layer architecture:
 # Backend
 cd backend
 pip install -e ".[dev]"          # run once per session if deps missing
-pytest tests/ -v                 # 230 tests, all green
+pytest tests/ -v                 # 292 tests, all green
 uvicorn app.main:app --reload    # http://localhost:8000
 
 # Cockpit
@@ -50,8 +50,8 @@ GitHub issues are the source of truth for status. Issue #1 is the PRD; slices st
 | #11 | 10 | Consolidation + reconciliation Celery tasks | ✅ done |
 | #12 | 11 | Full mock connector set — all 8 systems | ✅ done |
 | #13 | 12 | Remaining agents — Comms, Delivery, Finance | ✅ done |
-| #14 | 13 | Notification delivery — Resend email + Slack webhook | ⬜ |
-| #15 | 14 | Cockpit — Activity Feed (recent runs, trace tree drilldown) | ⬜ |
+| #14 | 13 | Notification delivery — Resend email + Slack webhook | ✅ done |
+| #15 | 14 | Cockpit — Activity Feed (recent runs, trace tree drilldown) | ✅ done |
 | #16 | 15 | Cockpit — Client Profiles | ⬜ |
 | #17 | 16 | Cockpit — Integrations / Health | ⬜ |
 | #18 | 17 | Real connector — Gmail (OAuth, Pub/Sub webhook) | ⬜ |
@@ -62,7 +62,7 @@ GitHub issues are the source of truth for status. Issue #1 is the PRD; slices st
 | #23 | 22 | Cockpit — Cost & ROI | ⬜ |
 | #24 | 23 | Boilerplate acceptance test — second client, pack swap | ⬜ |
 
-Next issue to pick up: **#14 (Slice 13 — Notification delivery: Resend email + Slack webhook)**
+Next issue to pick up: **#16 (Slice 15 — Cockpit — Client Profiles)**
 
 ---
 
@@ -90,7 +90,7 @@ Next issue to pick up: **#14 (Slice 13 — Notification delivery: Resend email +
 
 ## What's built
 
-**Backend (fully tested, 230 tests green)**
+**Backend (fully tested, 292 tests green)**
 - `engine/spine/types.py` — all domain types (Span, Run, AuditRecord, MemoryRecord, ParkedApprovalRequest, AutonomyTier T0–T4, Scope)
 - `engine/ingestion/` — BusinessEvent → EntityResolver → MemoryWriter (guardrails: dedup, live-owned field protection, review queue)
 - `engine/agent/` — AgentRegistry (declarative routing), Orchestrator (creates Run, emits spans), AccountAgent (Anthropic Sonnet, fused memory+live), SpanEmitter (persists to SpanStore)
