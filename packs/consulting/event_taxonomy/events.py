@@ -32,5 +32,8 @@ class ConsultingEventType(str, Enum):
     BUDGET_THRESHOLD_CROSSED = "harvest.budget_threshold_crossed"
     ENGAGEMENT_CLOSED = "harvest.engagement_closed"
 
+    # Zoom — video meetings
+    MEETING_ENDED = "zoom.meeting_ended"
+
 
 CONSULTING_EVENTS: list[str] = [e.value for e in ConsultingEventType]
